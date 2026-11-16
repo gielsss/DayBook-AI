@@ -1,0 +1,24 @@
+.DS_Store
+build/
+.build/
+*.xcodeproj
+*.xcworkspace
+.swiftpm/
+
+# Credentials, tokens, and secrets
+*credentials*.json
+*client_secret*.json
+*.token
+*.env
+*.key
+*.pem
+
+# Personal databases, receipts, and personal data
+*planner_database*.json
+*finances_database*.json
+*receipt_drafts*.json
+Receipts/
+QuickCaptures/
+*.sqlite
+*.sqlite3
+*.db
