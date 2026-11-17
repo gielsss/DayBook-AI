@@ -194,6 +194,52 @@ public final class OllamaClient {
         return models.compactMap { $0["name"] as? String }.sorted()
     }
 
+    /// Downloads `model` into Ollama (`/api/pull`, streamed), reporting progress as it goes.
+    /// Ollama keeps partly downloaded files, so a cancelled or interrupted download picks up where it stopped.
+    public func pullModel(baseURL: String, model: String, onProgress: @escaping (OllamaPullProgress) -> Void) async throws {
+        let resolvedModel = model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? OllamaDefaults.model : model
+        var request = URLRequest(url: try Self.endpoint(baseURL, path: "/api/pull"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": resolvedModel, "stream": true], options: [.sortedKeys])
+        // Idle timeout: Ollama reports progress several times a second while downloading.
+        request.timeoutInterval = 300
+
+        var tracker = OllamaPullTracker(model: resolvedModel)
+        do {
+            let (bytes, response) = try await session.bytes(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw AIServiceError(kind: .network, statusCode: 0, message: "No HTTP response from Ollama.")
+            }
+            guard (200...299).contains(http.statusCode) else {
+                var body = Data()
+                for try await byte in bytes { body.append(byte) }
+                if let line = String(data: body, encoding: .utf8) { _ = try tracker.consume(line) }
+                throw AIServiceError(kind: .setupRequired, statusCode: http.statusCode, message: "Ollama couldn't download \"\(resolvedModel)\" (\(http.statusCode)).")
+            }
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                if let progress = try tracker.consume(line) { onProgress(progress) }
+            }
+        } catch let error as AIServiceError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let urlError as URLError {
+            switch urlError.code {
+            case .cancelled:
+                throw CancellationError()
+            case .cannotConnectToHost, .cannotFindHost:
+                throw Self.notRunningError()
+            default:
+                throw AIServiceError(kind: .network, statusCode: 0, message: "The download of \"\(resolvedModel)\" stopped: \(urlError.localizedDescription) Try again to continue where it left off.")
+            }
+        }
+        guard tracker.finished else {
+            throw AIServiceError(kind: .network, statusCode: 0, message: "The download of \"\(resolvedModel)\" stopped before it finished. Try again to continue where it left off.")
+        }
+    }
+
     /// Capabilities reported by Ollama for a model, e.g. ["completion", "vision"].
     public func capabilities(baseURL: String, model: String) async throws -> [String] {
         var request = URLRequest(url: try Self.endpoint(baseURL, path: "/api/show"))
@@ -251,7 +297,7 @@ public final class OllamaClient {
 
     nonisolated static func modelMissingError(_ model: String, installed: [String]) -> AIServiceError {
         let have = installed.isEmpty ? "No models are downloaded yet." : "Downloaded models: \(installed.joined(separator: ", "))."
-        return AIServiceError(kind: .setupRequired, statusCode: 404, message: "Model \"\(model)\" isn't downloaded. Run `ollama pull \(model)` in Terminal. \(have)")
+        return AIServiceError(kind: .setupRequired, statusCode: 404, message: "Model \"\(model)\" isn't downloaded. Press Download Model in Settings → Local AI (or run `ollama pull \(model)` in Terminal). \(have)")
     }
 
     nonisolated static func extractContent(fromResponse data: Data) throws -> String {
@@ -306,5 +352,76 @@ public final class OllamaClient {
     /// Helper for building JSON schemas: a nullable field of the given JSON type.
     nonisolated static func nullable(_ type: String) -> [String: Any] {
         ["anyOf": [["type": type], ["type": "null"]]]
+    }
+}
+
+/// How far a model download (`/api/pull`) has got.
+public struct OllamaPullProgress: Equatable {
+    /// Ollama's own step, e.g. "pulling manifest", "verifying sha256 digest", "success".
+    public let status: String
+    public let completedBytes: Int64
+    public let totalBytes: Int64
+
+    public init(status: String, completedBytes: Int64, totalBytes: Int64) {
+        self.status = status
+        self.completedBytes = completedBytes
+        self.totalBytes = totalBytes
+    }
+
+    /// 0...1, or nil before Ollama has reported any sizes.
+    public var fraction: Double? {
+        totalBytes > 0 ? min(1, Double(completedBytes) / Double(totalBytes)) : nil
+    }
+
+    /// Plain words for the progress line, e.g. "1.2 GB of 6.1 GB" or "Checking the download…".
+    public var description: String {
+        let lower = status.lowercased()
+        if lower == "success" { return "Done" }
+        if lower.contains("verifying") { return "Checking the download…" }
+        if lower.contains("writing") || lower.contains("removing") { return "Finishing up…" }
+        if totalBytes > 0 {
+            let format = ByteCountFormatter()
+            format.countStyle = .file
+            return "\(format.string(fromByteCount: completedBytes)) of \(format.string(fromByteCount: totalBytes))"
+        }
+        return "Starting…"
+    }
+}
+
+/// Reads Ollama's streamed `/api/pull` lines. Each file (layer) reports its own size, so totals add up across layers.
+struct OllamaPullTracker {
+    let model: String
+    private var layers: [String: (completed: Int64, total: Int64)] = [:]
+    private(set) var finished = false
+
+    init(model: String) { self.model = model }
+
+    /// Returns the overall progress after one line, nil for blank lines; throws Ollama's error lines.
+    mutating func consume(_ line: String) throws -> OllamaPullProgress? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let json = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any] else { return nil }
+        if let error = json["error"] as? String {
+            let lower = error.lowercased()
+            if lower.contains("file does not exist") || lower.contains("not found") || lower.contains("manifest unknown") {
+                throw AIServiceError(kind: .setupRequired, statusCode: 404, message: "Ollama has no model called \"\(model)\". Check the spelling of the model name (for example \(OllamaDefaults.model)).")
+            }
+            if lower.contains("space") {
+                throw AIServiceError(kind: .setupRequired, statusCode: 0, message: "Not enough free space on this Mac to download \"\(model)\". Free up some space and try again.")
+            }
+            throw AIServiceError(kind: .network, statusCode: 0, message: "Ollama couldn't download \"\(model)\": \(error). Try again to continue where it left off.")
+        }
+        let status = json["status"] as? String ?? ""
+        if let digest = json["digest"] as? String, let total = Self.int64(json["total"]), total > 0 {
+            layers[digest] = (Self.int64(json["completed"]) ?? layers[digest]?.completed ?? 0, total)
+        }
+        if status.lowercased() == "success" { finished = true }
+        let completed = layers.values.reduce(Int64(0)) { $0 + $1.completed }
+        let total = layers.values.reduce(Int64(0)) { $0 + $1.total }
+        return OllamaPullProgress(status: status, completedBytes: finished ? total : completed, totalBytes: total)
+    }
+
+    private static func int64(_ value: Any?) -> Int64? {
+        (value as? NSNumber)?.int64Value
     }
 }

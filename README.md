@@ -6,6 +6,12 @@ All AI runs on your own Mac through [Ollama](https://ollama.com). There is no ac
 
 ![Today: missed sessions, new tasks from a sync, and the day's plan](docs/screenshots/today.png)
 
+## Download
+
+**[Download DayBook-AI.zip](https://github.com/gielsss/DayBook-AI/releases/latest/download/DayBook-AI.zip)** (Mac with an Apple chip, macOS 14 or later), then follow the **[step-by-step install guide](INSTALL.md)**. No technical knowledge needed: the AI model downloads from a button inside the app.
+
+The app isn't registered with Apple, so the first time you open it macOS shows a warning; the guide shows how to open it anyway (once). To build it yourself instead, see [Install](#install) below.
+
 ## What it does
 
 - **Finds your work.** Reads due dates and submission status from Canvas, assignments from Gradescope, and tasks from the last 72 hours of your Gmail inbox. Announcements, messages and emails are read by a local AI model. Quick Capture turns pasted text or a screenshot into a task.
@@ -23,9 +29,11 @@ All AI runs on your own Mac through [Ollama](https://ollama.com). There is no ac
 
 - A Mac with Apple silicon, running macOS 14 Sonoma or later
 - Apple's Command Line Tools (to build): `xcode-select --install`
-- [Ollama](https://ollama.com/download) with a model. The default is `qwen3-vl:8b` (about 6 GB), which can also read screenshots. Text-only models such as `qwen3:8b` work too; text in images is then read on your Mac first.
+- [Ollama](https://ollama.com/download) with a model. The default is `qwen3-vl:8b` (about 6 GB), which can also read screenshots. Text-only models such as `qwen3:8b` work too; text in images is then read on your Mac first. Download a model with Settings → Local AI → **Download Model**, or `ollama pull <model>`.
 
 ## Install
+
+To build from source instead of downloading:
 
 ```bash
 git clone https://github.com/gielsss/DayBook-AI.git
@@ -93,6 +101,8 @@ APP="./build/DayBook AI.app/Contents/MacOS/DayBookAI"
 "$APP" --test-quick-capture              # Quick Capture
 "$APP" --render-ui /tmp/daybook-ui       # screenshots of every tab, light and dark
 ```
+
+`./scripts/make_installer.sh` builds the app, runs the tests, prints [INSTALL.md](INSTALL.md) to PDF and puts `DayBook-AI.zip` (installer + guide) in `build/release/`, ready to attach to a GitHub release. It needs Google Chrome (or Chromium, Edge or Brave) to make the PDF.
 
 The test suites work offline against stand-ins for Canvas, Ollama and the calendar, and use temporary folders. The source and bundle still use the original name, PersonalPlanner, so existing data and Keychain items carry over.
 

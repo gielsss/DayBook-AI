@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Settings for the local AI model (Ollama) used for email scanning, Quick Capture and receipts.
 public struct AISettingsCard: View {
@@ -62,15 +63,12 @@ public struct AISettingsCard: View {
                         }
                     }
                     .buttonStyle(.bordered)
-                    .disabled(appState.isTestingOllama)
+                    .disabled(appState.isTestingOllama || appState.isDownloadingOllamaModel)
 
                     Spacer()
-
-                    Text("Download: ollama pull \(OllamaDefaults.model)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .textSelection(.enabled)
                 }
+
+                downloadSection
 
                 if let message = appState.ollamaTestSuccessMessage {
                     Label(message, systemImage: "checkmark.seal")
@@ -88,5 +86,77 @@ public struct AISettingsCard: View {
             .padding(10)
         }
         .task { await appState.refreshOllamaModels() }
+    }
+
+    /// Get Ollama → Download Model → progress → ready. No Terminal needed.
+    @ViewBuilder
+    private var downloadSection: some View {
+        if let progress = appState.ollamaDownloadProgress {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Downloading \(appState.ollamaModel)…")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Button("Cancel") { appState.cancelOllamaDownload() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                if let fraction = progress.fraction {
+                    ProgressView(value: fraction)
+                } else {
+                    ProgressView().progressViewStyle(.linear)
+                }
+                Text("\(progress.description). You can keep using DayBook AI while this runs; if it stops, press Download Model again to continue.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else if appState.isOllamaReachable == false {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Ollama isn't running or isn't installed yet. Install the free Ollama app, open it (a llama appears near the clock), then press Check Again.", systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button("Get Ollama…") {
+                        if let url = URL(string: "https://ollama.com/download") { NSWorkspace.shared.open(url) }
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Check Again") { Task { await appState.refreshOllamaModels() } }
+                        .buttonStyle(.bordered)
+                }
+            }
+        } else if appState.isOllamaReachable == true && !appState.isOllamaModelDownloaded {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("\(appState.ollamaModel) isn't on this Mac yet. Download it once to turn on the AI features\(appState.ollamaModel == OllamaDefaults.model ? " (about 6 GB)" : "").")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    if modelInput != appState.ollamaModel { appState.setOllamaModel(modelInput) }
+                    appState.downloadOllamaModel()
+                } label: {
+                    Label("Download Model", systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(.bordered)
+            }
+        } else if appState.isOllamaReachable == true {
+            Label("\(appState.ollamaModel) is downloaded.", systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+
+        if let message = appState.ollamaDownloadMessage {
+            Label(message, systemImage: "arrow.down.circle")
+                .font(.caption)
+                .foregroundColor(appState.isOllamaModelDownloaded ? .green : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let message = appState.ollamaDownloadError {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundColor(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

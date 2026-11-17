@@ -75,6 +75,13 @@ public final class AppState: ObservableObject {
     @Published public var isTestingOllama: Bool = false
     @Published public var ollamaTestSuccessMessage: String? = nil
     @Published public var ollamaTestErrorMessage: String? = nil
+    /// Whether Ollama answered the last model-list check (nil until checked).
+    @Published public var isOllamaReachable: Bool? = nil
+    /// Progress of Settings → Local AI → Download Model; nil when no download is running.
+    @Published public var ollamaDownloadProgress: OllamaPullProgress? = nil
+    @Published public var ollamaDownloadMessage: String? = nil
+    @Published public var ollamaDownloadError: String? = nil
+    private var ollamaDownloadTask: Task<Void, Never>? = nil
     
     // Canvas LMS
     @Published public var isCanvasConnected: Bool = false
@@ -565,9 +572,52 @@ public final class AppState: ObservableObject {
     public func refreshOllamaModels() async {
         do {
             self.ollamaInstalledModels = try await ollamaService.installedModels(baseURL: ollamaBaseURL)
+            self.isOllamaReachable = true
         } catch {
             self.ollamaInstalledModels = []
+            self.isOllamaReachable = false
         }
+    }
+
+    public var isOllamaModelDownloaded: Bool {
+        OllamaClient.isInstalled(ollamaModel, in: ollamaInstalledModels)
+    }
+
+    public var isDownloadingOllamaModel: Bool { ollamaDownloadTask != nil }
+
+    /// Downloads the chosen model through Ollama, so nobody has to use Terminal.
+    public func downloadOllamaModel() {
+        guard ollamaDownloadTask == nil else { return }
+        let model = ollamaModel
+        ollamaDownloadError = nil
+        ollamaDownloadMessage = nil
+        ollamaTestErrorMessage = nil
+        ollamaDownloadProgress = OllamaPullProgress(status: "starting", completedBytes: 0, totalBytes: 0)
+        ollamaDownloadTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.ollamaService.pullModel(baseURL: self.ollamaBaseURL, model: model) { [weak self] progress in
+                    self?.ollamaDownloadProgress = progress
+                }
+                self.ollamaDownloadMessage = "Downloaded \(model). The AI features are ready."
+            } catch is CancellationError {
+                self.ollamaDownloadMessage = "Download paused. Press Download Model again to continue where it stopped."
+            } catch {
+                self.ollamaDownloadError = error.localizedDescription
+            }
+            self.ollamaDownloadProgress = nil
+            self.ollamaDownloadTask = nil
+            await self.refreshOllamaModels()
+        }
+    }
+
+    public func cancelOllamaDownload() {
+        ollamaDownloadTask?.cancel()
+    }
+
+    /// Waits for a running download (tests).
+    func waitForOllamaDownload() async {
+        await ollamaDownloadTask?.value
     }
     
     public func testOllamaConnection() async {

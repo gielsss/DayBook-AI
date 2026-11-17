@@ -79,8 +79,18 @@ public final class OllamaTester {
             if let response = responses[email.id] { return response }
             return EmailAnalysis(isNewsletterOrMarketing: false, isDirectedAtRecipient: true, hasActionableTask: false, reasoning: "Nothing", tasks: [])
         }
-        func installedModels(baseURL: String) async throws -> [String] { [OllamaDefaults.model] }
+        var installed: [String] = [OllamaDefaults.model]
+        var pullError: Error? = nil
+        var pulledModels: [String] = []
+        func installedModels(baseURL: String) async throws -> [String] { installed }
         func testConnection(baseURL: String, model: String) async throws -> String { "Connected" }
+        func pullModel(baseURL: String, model: String, onProgress: @escaping (OllamaPullProgress) -> Void) async throws {
+            pulledModels.append(model)
+            onProgress(OllamaPullProgress(status: "pulling abc", completedBytes: 50, totalBytes: 100))
+            if let pullError { throw pullError }
+            installed.append(model)
+            onProgress(OllamaPullProgress(status: "success", completedBytes: 100, totalBytes: 100))
+        }
     }
 
     // MARK: - Helpers
@@ -260,6 +270,69 @@ public final class OllamaTester {
             check("Test Connection names a missing model", false)
         }
 
+        // --- Stage 3b: Downloading a model (no Terminal)
+        print("\n--- Stage 3b: Model Download ---")
+        var tracker = OllamaPullTracker(model: "qwen3-vl:8b")
+        _ = try? tracker.consume("{\"status\":\"pulling manifest\"}")
+        _ = try? tracker.consume("{\"status\":\"pulling aaa\",\"digest\":\"sha256:aaa\",\"total\":6000000000,\"completed\":1500000000}")
+        let mid = try? tracker.consume("{\"status\":\"pulling bbb\",\"digest\":\"sha256:bbb\",\"total\":1000000000,\"completed\":500000000}")
+        check("Download progress adds up every file", mid?.completedBytes == 2_000_000_000 && mid?.totalBytes == 7_000_000_000, "\(String(describing: mid))")
+        check("Progress shown in plain words", mid?.description.contains(" of ") == true && mid.map { abs(($0.fraction ?? 0) - 2.0 / 7.0) < 0.001 } == true)
+        check("Blank lines ignored", ((try? tracker.consume("  ")) ?? nil) == nil)
+        check("Not finished before Ollama says success", !tracker.finished)
+        let done = try? tracker.consume("{\"status\":\"success\"}")
+        check("Success finishes at 100%", tracker.finished && done?.fraction == 1 && done?.description == "Done")
+        var badName = OllamaPullTracker(model: "qwen9:1b")
+        do {
+            _ = try badName.consume("{\"error\":\"pull model manifest: file does not exist\"}")
+            check("Unknown model name explained", false)
+        } catch let e as AIServiceError {
+            check("Unknown model name explained", e.message.contains("no model called \"qwen9:1b\"") && e.kind == .setupRequired)
+        } catch { check("Unknown model name explained", false) }
+        var noSpace = OllamaPullTracker(model: "m")
+        do {
+            _ = try noSpace.consume("{\"error\":\"no space left on device\"}")
+            check("Full disk explained", false)
+        } catch let e as AIServiceError {
+            check("Full disk explained", e.message.contains("Not enough free space"))
+        } catch { check("Full disk explained", false) }
+
+        let pullLines = [
+            "{\"status\":\"pulling manifest\"}",
+            "{\"status\":\"pulling aaa\",\"digest\":\"sha256:aaa\",\"total\":100,\"completed\":40}",
+            "{\"status\":\"pulling aaa\",\"digest\":\"sha256:aaa\",\"total\":100,\"completed\":100}",
+            "{\"status\":\"verifying sha256 digest\"}",
+            "{\"status\":\"writing manifest\"}",
+            "{\"status\":\"success\"}"
+        ].joined(separator: "\n") + "\n"
+        StubURLProtocol.reset([StubURLProtocol.Stub(status: 200, body: pullLines)])
+        var seen: [OllamaPullProgress] = []
+        let pullClient = stubbedClient()
+        let pulled: Result<Void, Error> = runAsync {
+            try await pullClient.pullModel(baseURL: OllamaDefaults.baseURL, model: "qwen3-vl:8b") { seen.append($0) }
+        }
+        if case .failure(let error) = pulled { print("     Pull error: \(error)") }
+        check("Download streams through /api/pull", StubURLProtocol.lastPath == "/api/pull" && (try? pulled.get()) != nil)
+        check("Download asks for the chosen model, streamed", StubURLProtocol.lastBody?["model"] as? String == "qwen3-vl:8b" && StubURLProtocol.lastBody?["stream"] as? Bool == true)
+        check("Every progress step reported", seen.count == 6 && seen[1].completedBytes == 40 && seen.last?.status == "success", "count=\(seen.count)")
+
+        StubURLProtocol.reset([StubURLProtocol.Stub(status: 200, body: "{\"status\":\"pulling manifest\"}\n")])
+        let cutOff: Result<Void, Error> = runAsync {
+            try await pullClient.pullModel(baseURL: OllamaDefaults.baseURL, model: "qwen3-vl:8b") { _ in }
+        }
+        if case .failure(let error) = cutOff {
+            check("Download that stops early says so", error.localizedDescription.contains("stopped before it finished"))
+        } else { check("Download that stops early says so", false) }
+
+        StubURLProtocol.reset([], refuse: true)
+        let notRunning: Result<Void, Error> = runAsync {
+            try await pullClient.pullModel(baseURL: OllamaDefaults.baseURL, model: "qwen3-vl:8b") { _ in }
+        }
+        if case .failure(let error) = notRunning {
+            check("Download with Ollama closed says to open Ollama", error.localizedDescription.contains("Ollama isn't running"), error.localizedDescription)
+        } else { check("Download with Ollama closed says to open Ollama", false) }
+        check("Missing-model message points to the Download Model button", OllamaClient.modelMissingError("qwen3-vl:8b", installed: []).message.contains("Download Model"))
+
         // --- Stage 4: Images & PDFs
         print("\n--- Stage 4: Images & PDFs ---")
         let pdfURL = tempDir.appendingPathComponent("receipt.pdf")
@@ -337,6 +410,25 @@ public final class OllamaTester {
         let app = AppState(storageService: storage, calendarService: SimulatedCalendarService(), gmailService: gmail, ollamaService: ollama)
         app.isGmailAuthenticated = true
         check("Email scanning ready without any API key", app.isEmailExtractionConfigured)
+
+        // Settings → Local AI → Download Model
+        ollama.installed = []
+        _ = runAsync { await app.refreshOllamaModels() }
+        check("Ollama answering but model missing → Download Model offered", app.isOllamaReachable == true && !app.isOllamaModelDownloaded)
+        app.downloadOllamaModel()
+        check("Download shows progress while running", app.isDownloadingOllamaModel && app.ollamaDownloadProgress != nil)
+        _ = runAsync { await app.waitForOllamaDownload() }
+        check("Download finishes: model ready, progress cleared", app.isOllamaModelDownloaded && app.ollamaDownloadProgress == nil && !app.isDownloadingOllamaModel
+              && app.ollamaDownloadMessage?.contains("ready") == true && ollama.pulledModels == [OllamaDefaults.model])
+        ollama.installed = []
+        ollama.pullError = AIServiceError(kind: .network, statusCode: 0, message: "The download stopped.")
+        _ = runAsync { await app.refreshOllamaModels() }
+        app.downloadOllamaModel()
+        _ = runAsync { await app.waitForOllamaDownload() }
+        check("Failed download shows the error and can be retried", app.ollamaDownloadError == "The download stopped." && !app.isDownloadingOllamaModel && !app.isOllamaModelDownloaded)
+        ollama.pullError = nil
+        ollama.installed = [OllamaDefaults.model]
+        app.ollamaDownloadError = nil
         let e1 = sampleEmail(id: "o1", subject: "Lab report", hoursAgo: 2)
         let e2 = sampleEmail(id: "o2", subject: "Broken", hoursAgo: 3)
         gmail.stubsToReturn = [e1, e2].map { GmailMessageStub(id: $0.id, threadId: $0.threadId) }

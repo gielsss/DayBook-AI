@@ -18,6 +18,9 @@ public protocol OllamaExtractionServiceProtocol {
 
     /// Rough focused-work time for an assignment, from its title and description.
     func estimateTaskMinutes(title: String, context: String, baseURL: String, model: String) async throws -> TaskTimeEstimate?
+
+    /// Downloads a model into Ollama (Settings → Local AI → Download Model).
+    func pullModel(baseURL: String, model: String, onProgress: @escaping (OllamaPullProgress) -> Void) async throws
 }
 
 /// The local model's rough time estimate for an assignment.
@@ -43,6 +46,11 @@ public struct TaskTimeEstimate: Codable, Equatable {
 public extension OllamaExtractionServiceProtocol {
     /// Services that can't estimate return nil (the built-in guess is kept).
     func estimateTaskMinutes(title: String, context: String, baseURL: String, model: String) async throws -> TaskTimeEstimate? { nil }
+
+    /// Services without a real Ollama behind them can't download models.
+    func pullModel(baseURL: String, model: String, onProgress: @escaping (OllamaPullProgress) -> Void) async throws {
+        throw AIServiceError(kind: .setupRequired, statusCode: 0, message: "Downloading models isn't available here.")
+    }
 }
 
 /// Finds tasks in emails with the local Ollama model. The task JSON schema is enforced through Ollama's `format` field.
@@ -86,6 +94,10 @@ public final class OllamaExtractionService: OllamaExtractionServiceProtocol {
 
     public func installedModels(baseURL: String) async throws -> [String] {
         try await client.installedModels(baseURL: baseURL)
+    }
+
+    public func pullModel(baseURL: String, model: String, onProgress: @escaping (OllamaPullProgress) -> Void) async throws {
+        try await client.pullModel(baseURL: baseURL, model: model, onProgress: onProgress)
     }
 
     /// Checks Ollama is running, the model is downloaded and can read images, then analyzes a sample email.
