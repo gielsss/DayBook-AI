@@ -52,7 +52,7 @@ You can skip this part for now. The planner, calendar and Canvas due dates all w
 4. Open **Ollama** from Applications. If it asks to install its command-line tool, click **Install** and enter your Mac password.
 5. You'll now see a small **llama icon** at the top of your screen, near the clock. That means it's running. (If a chat window opens, you can close it; the llama stays.)
 
-### 2b. Download the AI "brain" (one time, about 6 GB)
+### 2b. Download the AI "brain" (one time, about 5 GB)
 
 1. In DayBook AI, click **Settings** in the sidebar on the left.
 2. Scroll down to **Local AI (Ollama)**. It says the model "isn't on this Mac yet".

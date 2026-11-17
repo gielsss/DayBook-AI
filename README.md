@@ -29,7 +29,7 @@ The app isn't registered with Apple, so the first time you open it macOS shows a
 
 - A Mac with Apple silicon, running macOS 14 Sonoma or later
 - Apple's Command Line Tools (to build): `xcode-select --install`
-- [Ollama](https://ollama.com/download) with a model. The default is `qwen3-vl:8b` (about 6 GB), which can also read screenshots. Text-only models such as `qwen3:8b` work too; text in images is then read on your Mac first. Download a model with Settings → Local AI → **Download Model**, or `ollama pull <model>`.
+- [Ollama](https://ollama.com/download) with a model. The default is `qwen3:8b` (about 5 GB): text in screenshots and receipts is read on your Mac first, then sent to the model as text. A vision model such as `qwen3-vl:8b` (about 6 GB) can also look at pictures directly, but is noticeably slower. Download a model with Settings → Local AI → **Download Model**, or `ollama pull <model>`.
 
 ## Install
 
@@ -38,7 +38,7 @@ To build from source instead of downloading:
 ```bash
 git clone https://github.com/gielsss/DayBook-AI.git
 cd DayBook-AI
-ollama pull qwen3-vl:8b
+ollama pull qwen3:8b
 ./scripts/run.sh
 ```
 

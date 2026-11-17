@@ -185,7 +185,9 @@ public final class OllamaTester {
 
         // --- Stage 1: Request shape
         print("--- Stage 1: Request Shape ---")
-        check("Default model is the vision-capable qwen3-vl:8b", OllamaDefaults.model == "qwen3-vl:8b")
+        check("Default model is the faster text model qwen3:8b", OllamaDefaults.model == "qwen3:8b")
+        check("Vision model still suggested for pictures", OllamaDefaults.visionModel == "qwen3-vl:8b"
+              && OllamaClient.classify(statusCode: 400, data: Data("{\"error\":\"model does not support image input\"}".utf8), model: "qwen3:8b").message.contains("qwen3-vl:8b"))
         let body = OllamaClient.buildChatBody(model: "m", system: "sys", user: "u", images: [Data([1, 2, 3])], schema: EmailExtractionPrompt.analysisSchema)
         let messages = body["messages"] as? [[String: Any]]
         check("Non-streaming request", body["stream"] as? Bool == false)
@@ -472,7 +474,7 @@ public final class OllamaTester {
         """
         let legacy = try? JSONDecoder().decode(UserPreferences.self, from: Data(legacyPrefsJSON.utf8))
         check("Old Gemini/Claude preferences ignored without error", legacy != nil && legacy?.workStartHour == 8)
-        check("Old preferences default to the vision model", legacy?.ollamaModel == OllamaDefaults.model)
+        check("Old preferences default to the default model", legacy?.ollamaModel == OllamaDefaults.model)
         let migrated = try? JSONDecoder().decode(UserPreferences.self, from: Data("{\"ollamaEmailModel\":\"qwen3:8b\"}".utf8))
         check("Earlier ollamaEmailModel setting carried over", migrated?.ollamaModel == "qwen3:8b")
         if let encoded = try? JSONEncoder().encode(UserPreferences()),

@@ -2,8 +2,12 @@ import Foundation
 
 public enum OllamaDefaults {
     public static let baseURL = "http://localhost:11434"
-    /// One vision-capable model handles email text, Quick Capture screenshots and receipt photos.
-    public static let model = "qwen3-vl:8b"
+    /// Default model for email text, Canvas text, estimates, Quick Capture and receipts. Text-only and
+    /// noticeably faster than a vision model on 8–16 GB Macs; text in screenshots and receipt photos is read
+    /// on the Mac first (Apple Vision OCR), so those still work.
+    public static let model = "qwen3:8b"
+    /// Suggested when someone wants the model to look at pictures without text (slower, about 6 GB).
+    public static let visionModel = "qwen3-vl:8b"
     /// Context window requested from Ollama. Its built-in default is small enough to silently cut long inputs.
     public static let contextTokens = 16384
     /// Rough character budget for an email body so prompt + answer fit inside `contextTokens`.
@@ -327,7 +331,7 @@ public final class OllamaClient {
         let suffix = apiMessage.isEmpty ? "" : ": \(apiMessage)"
         if statusCode == 400 {
             if lower.contains("image") || lower.contains("vision") || lower.contains("multimodal") {
-                return AIServiceError(kind: .setupRequired, statusCode: statusCode, message: "Model \"\(model)\" can't read images. Choose a vision model such as \(OllamaDefaults.model) in Settings\(suffix)")
+                return AIServiceError(kind: .setupRequired, statusCode: statusCode, message: "Model \"\(model)\" can't read images. Choose a vision model such as \(OllamaDefaults.visionModel) in Settings\(suffix)")
             }
             return AIServiceError(kind: .invalidRequest, statusCode: statusCode, message: "Ollama rejected the request (400)\(suffix)")
         }

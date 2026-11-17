@@ -38,7 +38,7 @@ public final class QuickCaptureService {
                     // Text-only model: read the screenshot's text on this Mac and send that instead.
                     let recognized = try await ImageInputPreparer.recognizeText(in: [prepared])
                     guard !recognized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !text.isEmpty else {
-                        throw AIServiceError(kind: .invalidRequest, statusCode: 0, message: "No text was found in the image. Model \"\(model)\" can't look at pictures directly; for photos without text, download a vision model such as \(OllamaDefaults.model).")
+                        throw AIServiceError(kind: .invalidRequest, statusCode: 0, message: "No text was found in the image. Model \"\(model)\" can't look at pictures directly; for photos without text, download a vision model such as \(OllamaDefaults.visionModel).")
                     }
                     capturedText = [text, "Text recognized in the screenshot:\n" + recognized]
                         .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

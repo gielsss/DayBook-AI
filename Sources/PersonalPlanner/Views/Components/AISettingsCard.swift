@@ -128,7 +128,7 @@ public struct AISettingsCard: View {
             }
         } else if appState.isOllamaReachable == true && !appState.isOllamaModelDownloaded {
             VStack(alignment: .leading, spacing: 6) {
-                Text("\(appState.ollamaModel) isn't on this Mac yet. Download it once to turn on the AI features\(appState.ollamaModel == OllamaDefaults.model ? " (about 6 GB)" : "").")
+                Text("\(appState.ollamaModel) isn't on this Mac yet. Download it once to turn on the AI features\(appState.ollamaModel == OllamaDefaults.model ? " (about 5 GB)" : "").")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

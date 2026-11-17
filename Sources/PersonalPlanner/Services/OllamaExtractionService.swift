@@ -134,7 +134,7 @@ public final class OllamaExtractionService: OllamaExtractionServiceProtocol {
         let found = analysis.tasks.first?.title ?? "no task"
         var result = "Connected to \(resolvedModel). Test email produced \"\(found)\" in \(seconds)s."
         if !capabilities.isEmpty && !capabilities.contains("vision") {
-            result += " This model can't look at images, so text in images is read on this Mac first. For photos without text, use a vision model such as \(OllamaDefaults.model)."
+            result += " This model can't look at images, so text in images is read on this Mac first. For photos without text, use a vision model such as \(OllamaDefaults.visionModel)."
         }
         return result
     }
