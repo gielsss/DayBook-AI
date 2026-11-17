@@ -9,6 +9,7 @@ DayBook AI looks at your classes, calendar and email, finds what's due, and plan
 > - **macOS 14 Sonoma or newer** (shown in the same window).
 > - **About 10 GB of free space** and an internet connection.
 > - **About 30 minutes.** Most of it is waiting for a download.
+> - **The AI model `qwen3:8b`** (free, about 5 GB). You'll download it from inside DayBook AI in step 2b. Use this exact model: others can be much slower.
 
 There are three parts: **(1)** put the app on your Mac, **(2)** install the free AI helper, **(3)** connect your classes and calendar. If you get stuck, see **"If something goes wrong"** at the end.
 
@@ -52,11 +53,14 @@ You can skip this part for now. The planner, calendar and Canvas due dates all w
 4. Open **Ollama** from Applications. If it asks to install its command-line tool, click **Install** and enter your Mac password.
 5. You'll now see a small **llama icon** at the top of your screen, near the clock. That means it's running. (If a chat window opens, you can close it; the llama stays.)
 
-### 2b. Download the AI "brain" (one time, about 5 GB)
+### 2b. Download the AI model `qwen3:8b` (one time, about 5 GB)
+
+> [!IMPORTANT]
+> DayBook AI needs the model **`qwen3:8b`**. Make sure the **Model** box in Settings says exactly `qwen3:8b` before you click Download Model. Other models (for example `qwen3-vl:8b`) work, but syncing can be several times slower.
 
 1. In DayBook AI, click **Settings** in the sidebar on the left.
-2. Scroll down to **Local AI (Ollama)**. It says the model "isn't on this Mac yet".
-3. Click **Download Model**. A progress bar appears. It can take 10–30 minutes depending on your internet; you can keep using the app meanwhile.
+2. Scroll down to **Local AI (Ollama)**. Check that the **Model** box says `qwen3:8b`. If it says anything else, click in the box, replace it with `qwen3:8b` and press <kbd>Return</kbd>.
+3. It says `qwen3:8b` "isn't on this Mac yet". Click **Download Model**. A progress bar appears. It can take 10–30 minutes depending on your internet; you can keep using the app meanwhile.
 4. When it says **The AI features are ready**, you're done.
 
 If it says "Ollama isn't running or isn't installed yet", do step 2a first (or open Ollama from Applications), then click **Check Again**. If the download stops (for example your Mac went to sleep), just click **Download Model** again; it continues where it left off.
@@ -121,7 +125,7 @@ Google makes every user do a one-time setup in Google's developer website before
 | A box asks to use the "keychain" or saved passwords | Type your Mac password and click **Always Allow**. That's where DayBook AI keeps your logins safely. |
 | A box asks if DayBook AI can control Safari / Chrome | Click **OK**. That's how it reads Canvas and Gradescope. If you clicked "Don't Allow" by accident: System Settings → Privacy & Security → Automation → DayBook AI → turn your browser on. |
 | Canvas says "sign in" | Log in to Canvas again in your browser, keep the tab open, and press Sync Everything. |
-| The AI is really slow | That's normal on the first run and on Macs with 8 GB of memory. Leave it running; it gets quicker after the first few. |
+| The AI or syncing is really slow | First check **Settings → Local AI (Ollama) → Model** says `qwen3:8b` (if not, change it and click **Download Model**). The first sync is always slower because everything is new, and Macs with 8 GB of memory are slower in general. |
 
 > [!NOTE]
 > **Your privacy**
